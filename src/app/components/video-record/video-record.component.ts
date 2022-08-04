@@ -1,125 +1,76 @@
-import {
-  Component,
-  OnDestroy,
-  OnInit,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  ViewChild,
-} from '@angular/core';
-import { VideoRecordingService } from '../../services/video-recording.service';
+import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
+import { ApiService } from 'src/app/services/api.service';
 @Component({
   selector: 'app-video-record',
   templateUrl: './video-record.component.html',
   styleUrls: ['./video-record.component.css'],
 })
-export class VideoRecordComponent implements OnDestroy {
-  @ViewChild('videoElement') videoElement: any;
+export class VideoRecordComponent implements OnInit {
+  @ViewChild('video', { static: true }) //variable from html
+  public video: ElementRef;
 
-  video: any;
-  isPlaying = false;
-  displayControls = true;
-  isVideoRecording = false;
-  videoRecordedTime;
-  videoBlobUrl;
-  audioBlob;
-  videoBlob;
-  audioName;
-  videoName;
-  videoStream: MediaStream;
-  videoConf = { video: { facingMode: 'user', width: 320 }, audio: true };
+  @ViewChild('canvas', { static: true }) //variable from html
+  public canvas: ElementRef;
 
-  constructor(
-    private ref: ChangeDetectorRef,
-    private videoRecordingService: VideoRecordingService,
-    private sanitizer: DomSanitizer
-  ) {
-    this.videoRecordingService.recordingFailed().subscribe(() => {
-      this.isVideoRecording = false;
-      this.ref.detectChanges();
-    });
+  public captures: Array<any>;
+  private imageSrc: string = '';
 
-    this.videoRecordingService.getRecordedTime().subscribe((time) => {
-      this.videoRecordedTime = time;
-      this.ref.detectChanges();
-    });
-
-    this.videoRecordingService.getStream().subscribe((stream) => {
-      this.videoStream = stream;
-      this.ref.detectChanges();
-    });
-
-    this.videoRecordingService.getRecordedBlob().subscribe((data) => {
-      this.videoBlob = data.blob;
-      this.videoName = data.title;
-      this.videoBlobUrl = this.sanitizer.bypassSecurityTrustUrl(data.url);
-      this.ref.detectChanges();
-    });
+  public constructor(private apiService: ApiService) {
+    this.captures = [];
   }
 
-  ngOnInit() {}
-  public ngAfterViewInit(): void {
-    if (this.videoElement !== undefined) {
-      this.video = this.videoElement.nativeElement;
-    }
-  }
-  startVideoRecording() {
-    if (!this.isVideoRecording) {
-      this.video.controls = false;
-      this.isVideoRecording = true;
-      this.videoRecordingService
-        .startRecording(this.videoConf)
+  public ngOnInit() {}
+
+  public ngAfterViewInit() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ video: true })
         .then((stream) => {
-          // this.video.src = window.URL.createObjectURL(stream);
-          this.video.srcObject = stream;
-          this.video.play();
+          this.video.nativeElement.srcObject = stream;
+          this.video.nativeElement.play();
+          setInterval(() => {
+            console.log('works');
+            if (this.captures.length < 10) {
+              this.sendPhoto(this.capture());
+            }
+          }, 2000);
         })
-        .catch(function (err) {
-          console.log(err.name + ': ' + err.message);
-        });
+        .catch((err) => alert(`Bummer! ${err.name}.`));
     }
   }
+  capture() {
+    const context = this.canvas.nativeElement
+      .getContext('2d')
+      .drawImage(this.video.nativeElement, 0, 0, 640, 480);
+    this.captures.push(this.canvas.nativeElement.toDataURL('image/png'));
+    console.log('picture taken', this.captures[0]);
+    console.log('array.length: ', this.captures.length);
+    return this.canvas.nativeElement.toDataURL('image/png');
+  }
 
-  abortVideoRecording() {
-    if (this.isVideoRecording) {
-      this.isVideoRecording = false;
-      this.videoRecordingService.abortRecording();
-      this.video.controls = false;
+  handleInputChange(e) {
+    var file = e.dataTransfer ? e.dataTransfer.files[0] : e.target.files[0];
+    var pattern = /image-*/;
+    var reader = new FileReader();
+    if (!file.type.match(pattern)) {
+      alert('invalid format');
+      return;
     }
+    reader.onload = this._handleReaderLoaded.bind(this);
+    reader.readAsDataURL(file);
   }
-
-  stopVideoRecording() {
-    if (this.isVideoRecording) {
-      this.videoRecordingService.stopRecording();
-      this.video.srcObject = this.videoBlobUrl;
-      this.isVideoRecording = false;
-      this.video.controls = true;
-    }
+  _handleReaderLoaded(e) {
+    let reader = e.target;
+    this.imageSrc = reader.result;
+    console.log(this.imageSrc);
   }
+  sendPhoto(image) {
+    console.log('the image i want to send', image);
+    this.apiService.sendImage(image).subscribe((res) => {
+      console.log(res);
 
-  clearVideoRecordedData() {
-    this.videoBlobUrl = null;
-    this.video.srcObject = null;
-    this.video.controls = false;
-    this.ref.detectChanges();
-  }
-
-  downloadVideoRecordedData() {
-    this._downloadFile(this.videoBlob, 'video/mp4', this.videoName);
-  }
-
-  ngOnDestroy(): void {}
-
-  _downloadFile(data: any, type: string, filename: string): any {
-    const blob = new Blob([data], { type: type });
-    const url = window.URL.createObjectURL(blob);
-    //this.video.srcObject = stream;
-    //const url = data;
-    const anchor = document.createElement('a');
-    anchor.download = filename;
-    anchor.href = url;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
+      alert('Uploaded Successfully.');
+    });
   }
 }

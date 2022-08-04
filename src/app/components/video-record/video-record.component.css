@@ -1,0 +1,22 @@
+body {
+    background-color: white;
+}
+
+#app {
+    text-align: center;
+    color: #2c3e50;
+    margin-top: 60px;
+}
+
+#video {
+    background-color: #000000;
+}
+
+#canvas {
+    display: none;
+}
+
+li {
+    display: inline;
+    padding: 5px;
+}
